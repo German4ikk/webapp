@@ -56,7 +56,6 @@ ws.onmessage = async (event) => {
   } else if (data.type === 'stream_notification') {
     updateStreamList(data.user_id, data.mode || 'stream');
   } else if (data.type === 'viewer_joined') {
-    // Ведущий получает уведомление о новом зрителе
     chatContainer.innerHTML += `<div class="chat-message"><i>Новый зритель подключился 👀</i></div>`;
   } else if (data.type === 'chat_message') {
     appendMessage(data.user_id, data.message);
@@ -119,7 +118,7 @@ async function startVideo() {
 }
 
 async function startRoulette(partnerId) {
-  peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:turn.bistri.com:80', username: 'homeo', credential: 'homeo' }] });
   localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
   peerConnection.ontrack = event => {
@@ -142,7 +141,7 @@ async function startRoulette(partnerId) {
 
 async function handleOffer(data) {
   if (!peerConnection) {
-    peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:turn.bistri.com:80', username: 'homeo', credential: 'homeo' }] }); // Добавлен TURN для стабильности
+    peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:turn.bistri.com:80', username: 'homeo', credential: 'homeo' }] });
     if (mode === 'viewer') {
       peerConnection.ontrack = event => {
         remoteVideo.srcObject = event.streams[0];
