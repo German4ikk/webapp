@@ -4,7 +4,7 @@ import json
 
 clients = {}  # Хранит подключённых пользователей
 active_streams = {}  # Активные эфиры {streamer_id: websocket}
-roulette_queue =  # Очередь для рулетки
+roulette_queue = []  # Очередь для рулетки
 viewers = {}  # Зрители {streamer_id: [viewer_ids]}
 
 async def handler(websocket, path):
@@ -23,33 +23,28 @@ async def handler(websocket, path):
                 await websocket.send(json.dumps({'type': 'stream_started', 'user_id': user_id, 'mode': 'stream'}))
                 # Уведомляем всех зрителей о новом эфире
                 for uid, client in clients.items():
-                    if uid!= user_id:
+                    if uid != user_id:
                         await client.send(json.dumps({'type': 'stream_notification', 'user_id': user_id, 'mode': 'stream'}))
             elif data['type'] == 'join_roulette':
                 user_id = data['user_id']
-                print(f"Пользователь {user_id} хочет в рулетку")  # Логирование
-                if roulette_queue and roulette_queue!= user_id:
+                if roulette_queue and roulette_queue[0] != user_id:
                     partner_id = roulette_queue.pop(0)
-                    print(f"Найдена пара: {user_id} и {partner_id}")  # Логирование
                     await clients[user_id].send(json.dumps({'type': 'partner', 'partner_id': partner_id}))
                     await clients[partner_id].send(json.dumps({'type': 'partner', 'partner_id': user_id}))
                 else:
                     if user_id not in roulette_queue:
-                        print(f"Пользователь {user_id} добавлен в очередь")  # Логирование
                         roulette_queue.append(user_id)
             elif data['type'] == 'join_stream':
                 user_id = data['user_id']
                 streamer_id = data['streamer_id']
                 if streamer_id in active_streams:
                     if streamer_id not in viewers:
-                        viewers[streamer_id] =
+                        viewers[streamer_id] = []
                     viewers[streamer_id].append(user_id)
-                    # Ведущий отправляет поток
-                    await clients[user_id].send(json.dumps({'type': 'offer', 'offer': {}, 'from': streamer_id}))  
+                    await clients[user_id].send(json.dumps({'type': 'offer', 'offer': {}, 'from': streamer_id}))  # Ведущий отправляет поток
                     await active_streams[streamer_id].send(json.dumps({'type': 'viewer_joined', 'viewer_id': user_id}))
             elif data['type'] in ['offer', 'answer', 'candidate']:
                 to_id = data['to']
-                print(f"Пересылаем сообщение типа {data['type']} от {user_id} к {to_id}")  # Логирование
                 if to_id in clients or to_id in active_streams:
                     target = clients.get(to_id, active_streams.get(to_id))
                     await target.send(json.dumps(data))
@@ -62,12 +57,11 @@ async def handler(websocket, path):
                     # Отправляем сообщение всем зрителям этого стрима
                     if to in viewers:
                         for viewer_id in viewers[to]:
-                            if viewer_id in clients and viewer_id!= user_id:
+                            if viewer_id in clients and viewer_id != user_id:
                                 await clients[viewer_id].send(json.dumps({'type': 'chat_message', 'user_id': user_id, 'message': message}))
                 else:
-                    # Отправляем сообщение всем пользователям, кроме отправителя
-                    for uid, client in clients.items():  
-                        if uid!= user_id:
+                    for uid, client in clients.items():
+                        if uid != user_id:
                             await client.send(json.dumps({'type': 'chat_message', 'user_id': user_id, 'message': message}))
             elif data['type'] == 'gift':
                 user_id = data['user_id']
