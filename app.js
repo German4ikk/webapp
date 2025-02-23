@@ -27,8 +27,8 @@ const ICE_CONFIG = {
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
-    // Добавлен реальный TURN-сервер (замени на свои данные)
-    { urls: "turn:your-turn-server.xirsys.com:3478", username: "your-username", credential: "your-password" }
+    // Замени на реальные данные TURN-сервера (регистрируйся на Xirsys или Twilio)
+    { urls: "turn:global.xirsys.net:443?transport=udp", username: "your-username-from-xirsys", credential: "your-credential-from-xirsys" }
   ]
 };
 
@@ -160,12 +160,15 @@ const handleMessage = async (event) => {
         await handlePartner(data.partner_id);
         break;
       case 'offer':
+        console.log("Получен offer от:", data.from);
         await handleOffer(data);
         break;
       case 'answer':
+        console.log("Получен answer от:", data.from);
         await handleAnswer(data);
         break;
       case 'candidate':
+        console.log("Получен candidate от:", data.from);
         await handleIceCandidate(data);
         break;
       case 'chat_message':
@@ -198,6 +201,7 @@ const createPeerConnection = async () => {
 
   peerConnection.onicecandidate = ({ candidate }) => {
     if (candidate && socket.readyState === WebSocket.OPEN) {
+      console.log("Отправлен ICE candidate:", candidate);
       socket.send(JSON.stringify({
         type: "candidate",
         candidate: candidate.toJSON(),
@@ -210,7 +214,7 @@ const createPeerConnection = async () => {
   };
 
   peerConnection.ontrack = (event) => {
-    console.log("Received track:", event);
+    console.log("Received track, streams:", event.streams);
     if (event.streams && event.streams[0]) {
       remoteVideo.srcObject = event.streams[0];
       remoteVideo.play().catch(e => console.error("Ошибка воспроизведения видео:", e));
@@ -229,12 +233,14 @@ const createPeerConnection = async () => {
   if (localStream) {
     localStream.getTracks().forEach(track => {
       peerConnection.addTrack(track, localStream);
+      console.log("Добавлен трек в peerConnection:", track);
     });
   }
 };
 
 async function handleOffer(data) {
   try {
+    console.log("Обработка offer от:", data.from);
     await createPeerConnection();
     peerConnection.remoteUserId = data.from; // Сохраняем ID удалённого пользователя
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -242,6 +248,7 @@ async function handleOffer(data) {
     await peerConnection.setLocalDescription(answer);
 
     if (socket.readyState === WebSocket.OPEN) {
+      console.log("Отправлен answer к:", data.from);
       socket.send(JSON.stringify({
         type: "answer",
         answer: answer,
@@ -260,6 +267,7 @@ async function handleOffer(data) {
 
 async function handleAnswer(data) {
   try {
+    console.log("Обработка answer от:", data.from);
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
   } catch (error) {
     console.error("Ошибка обработки answer:", error);
@@ -269,6 +277,7 @@ async function handleAnswer(data) {
 
 async function handleIceCandidate(data) {
   try {
+    console.log("Обработка ICE candidate от:", data.from);
     if (data.candidate) {
       await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
     }
@@ -280,12 +289,14 @@ async function handleIceCandidate(data) {
 
 async function handlePartner(partnerId) {
   try {
+    console.log("Подключение к партнеру:", partnerId);
     await createPeerConnection();
     peerConnection.remoteUserId = partnerId; // Сохраняем ID партнёра
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
 
     if (socket.readyState === WebSocket.OPEN) {
+      console.log("Отправлен offer к партнеру:", partnerId);
       socket.send(JSON.stringify({
         type: "offer",
         offer: offer,
@@ -390,6 +401,7 @@ function joinStream(streamerId) {
         peerConnection.setLocalDescription(offer)
           .then(() => {
             if (socket.readyState === WebSocket.OPEN) {
+              console.log("Отправлен offer для подключения к стриму:", streamerId);
               socket.send(JSON.stringify({
                 type: "join_stream",
                 user_id: userId,
@@ -421,6 +433,7 @@ function handleRoulette() {
         peerConnection.setLocalDescription(offer)
           .then(() => {
             if (socket.readyState === WebSocket.OPEN) {
+              console.log("Отправлен offer для подключения к рулетке");
               socket.send(JSON.stringify({
                 type: "join_roulette",
                 user_id: userId,
