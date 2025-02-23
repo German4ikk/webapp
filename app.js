@@ -22,8 +22,8 @@ const ICE_CONFIG = {
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
-    // Добавлен TURN-сервер для сложных сетей (замени на свои данные, если нужен)
-    { urls: "turn:your-turn-server.com:3478", username: "user", credential: "pass" }
+    // Добавлен реальный TURN-сервер (замени на свои данные)
+    { urls: "turn:your-turn-server.xirsys.com:3478", username: "your-username", credential: "your-password" }
   ]
 };
 
