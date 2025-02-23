@@ -1,9 +1,13 @@
 const tg = window.Telegram.WebApp;
-tg.expand();
-console.log("Telegram initData:", tg.initData);
+if (tg) {
+  tg.expand();
+  console.log("Telegram initData:", tg.initData);
+} else {
+  console.error("Telegram WebApp не инициализирован");
+}
 
 // Получаем userId из initData (если доступен) или генерируем случайный
-const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : Math.random().toString(36).substr(2, 9);
+const userId = tg.initDataUnsafe?.user ? tg.initDataUnsafe.user.id : Math.random().toString(36).substr(2, 9);
 let mode = null; // Сбрасываем mode, чтобы всегда показывать выбор режима
 
 // WebSocket URL для подключения к серверу
@@ -25,6 +29,7 @@ const ICE_CONFIG = {
 
 let peerConnection;
 let localStream;
+let partnerId = null; // Храним ID партнёра в рулетке
 
 // DOM-элементы
 const modeSelectionDiv = document.getElementById('modeSelection');
@@ -104,6 +109,7 @@ const handleMessage = async (event) => {
         updateStreamList(data.user_id, data.mode);
         break;
       case 'partner':
+        partnerId = data.partner_id; // Сохраняем ID партнёра
         await handlePartner(data.partner_id);
         break;
       case 'offer':
@@ -149,7 +155,7 @@ const createPeerConnection = async () => {
         type: "candidate",
         candidate: candidate.toJSON(),
         user_id: userId,
-        to: peerConnection.remoteUserId || null // Для маршрутизации на сервере
+        to: peerConnection.remoteUserId || partnerId || null // Для маршрутизации на сервере
       }));
     }
   };
@@ -392,7 +398,7 @@ sendMsgBtn.addEventListener('click', () => {
   appendMessage("Вы", msg);
   chatInput.value = "";
   if (socket.readyState === WebSocket.OPEN) {
-    const to = mode === 'viewer' ? peerConnection?.remoteUserId || null : null; // Для зрителя — стример, для стримера — всем
+    const to = mode === 'roulette' ? partnerId : (mode === 'viewer' ? peerConnection?.remoteUserId || null : null); // Для рулетки — партнёр, для зрителя — стример, для стримера — всем
     socket.send(JSON.stringify({
       type: "chat_message",
       user_id: userId,
@@ -406,7 +412,7 @@ giftBtn.addEventListener('click', () => {
   const giftAmount = 1.0;
   appendMessage("Вы", `🎁 Отправили подарок на ${giftAmount}`);
   if (socket.readyState === WebSocket.OPEN) {
-    const to = mode === 'roulette' ? peerConnection?.remoteUserId : (mode === 'viewer' ? peerConnection?.remoteUserId : userId);
+    const to = mode === 'roulette' ? partnerId : (mode === 'viewer' ? peerConnection?.remoteUserId : userId);
     socket.send(JSON.stringify({
       type: "gift",
       user_id: userId,
