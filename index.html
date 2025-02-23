@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Мини-приложение: Стримы и Рулетка</title>
+  <title>Мини-приложение: Стримы, Рулетка и Зрители</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,11 +23,22 @@
         <input type="radio" name="mode" value="roulette">
         <span class="mode-label">Видео-рулетка 🎉</span>
       </label>
+      <label class="mode-option">
+        <input type="radio" name="mode" value="viewer">
+        <span class="mode-label">Зритель 👀</span>
+      </label>
     </div>
     <button id="startModeBtn" class="start-btn">Запустить!</button>
   </section>
 
-  <!-- Основной интерфейс -->
+  <!-- Интерфейс зрителя -->
+  <section id="viewerContainer" class="hidden">
+    <h2 class="mode-title">Активные эфиры</h2>
+    <div id="streamList" class="stream-list"></div>
+    <div id="loading" class="loading hidden">Загрузка эфиров...</div>
+  </section>
+
+  <!-- Основной интерфейс (для эфира, рулетки, зрителя) -->
   <section id="appContainer" class="hidden">
     <h2 id="modeTitle" class="mode-title"></h2>
     <div id="videoContainer" class="video-container">
@@ -39,6 +50,7 @@
       <input type="text" id="chatInput" placeholder="Напиши что-нибудь..." class="chat-input">
       <button id="sendMsgBtn" class="send-btn">Отправить 🚀</button>
     </div>
+    <button id="giftBtn" class="send-btn hidden">Отправить подарок 🎁</button>
   </section>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
