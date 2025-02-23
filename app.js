@@ -71,10 +71,13 @@ const initWebSocket = () => {
     showError("Ошибка WebSocket-соединения");
   };
 
-  socket.onclose = () => {
-    console.log("🔌 WebSocket connection closed");
+  socket.onclose = (event) => {
+    console.log("🔌 WebSocket connection closed, code:", event.code, "reason:", event.reason);
     reconnectAttempts++;
-    reconnectTimer = setTimeout(initWebSocket, 5000 * reconnectAttempts);
+    reconnectTimer = setTimeout(() => {
+      initWebSocket();
+      console.log(`Попытка переподключения #${reconnectAttempts}`);
+    }, 5000 * reconnectAttempts);
   };
 };
 
@@ -88,6 +91,7 @@ function registerUser() {
   } else {
     console.error("WebSocket не открыт для регистрации");
     showError("Не удалось зарегистрироваться — WebSocket закрыт");
+    setTimeout(registerUser, 1000); // Пробуем снова через 1 секунду
   }
 }
 
