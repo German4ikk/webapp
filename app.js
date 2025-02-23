@@ -155,6 +155,7 @@ const createPeerConnection = async () => {
   };
 
   peerConnection.ontrack = (event) => {
+    console.log("Received track:", event);
     if (event.streams && event.streams[0]) {
       remoteVideo.srcObject = event.streams[0];
       remoteVideo.play().catch(e => console.error("Ошибка воспроизведения видео:", e));
@@ -326,7 +327,8 @@ function joinStream(streamerId) {
             socket.send(JSON.stringify({
               type: "join_stream",
               user_id: userId,
-              streamer_id: streamerId
+              streamer_id: streamerId,
+              offer: offer // Добавляем реальный offer для WebRTC
             }));
           });
       })
@@ -350,7 +352,8 @@ function handleRoulette() {
           .then(() => {
             socket.send(JSON.stringify({
               type: "join_roulette",
-              user_id: userId
+              user_id: userId,
+              offer: offer // Добавляем реальный offer для WebRTC
             }));
           });
       })
