@@ -3,7 +3,7 @@ tg.expand();
 console.log("Telegram initData:", tg.initData);
 
 const urlParams = new URLSearchParams(window.location.search);
-let mode = urlParams.get('mode') || 'stream';
+let mode = urlParams.get('mode');
 const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 'test_user';
 
 const modeSelectionDiv = document.getElementById('modeSelection');
