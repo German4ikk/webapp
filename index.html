@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <title>Мини-приложение: Стримы и Рулетка</title>
@@ -7,28 +7,36 @@
 </head>
 <body>
   <header>
-    <h1>Мини-приложение</h1>
+    <h1 class="app-title">Мини-приложение</h1>
   </header>
 
   <!-- Блок выбора режима -->
-  <section id="modeSelection" class="hidden">
-    <h2>Выберите режим:</h2>
-    <label><input type="radio" name="mode" value="stream" checked> Эфир</label><br>
-    <label><input type="radio" name="mode" value="roulette"> Видео-рулетка</label><br>
-    <button id="startModeBtn">Запустить</button>
+  <section id="modeSelection">
+    <h2 class="mode-title">Выберите режим:</h2>
+    <div class="mode-options">
+      <label class="mode-option">
+        <input type="radio" name="mode" value="stream" checked>
+        <span>Эфир</span>
+      </label>
+      <label class="mode-option">
+        <input type="radio" name="mode" value="roulette">
+        <span>Видео-рулетка</span>
+      </label>
+    </div>
+    <button id="startModeBtn" class="start-btn">Запустить</button>
   </section>
 
   <!-- Основной интерфейс -->
   <section id="appContainer" class="hidden">
-    <h2 id="modeTitle"></h2>
-    <div id="videoContainer">
-      <video id="localVideo" autoplay muted playsinline></video>
-      <video id="remoteVideo" autoplay playsinline class="hidden"></video>
+    <h2 id="modeTitle" class="mode-title"></h2>
+    <div id="videoContainer" class="video-container">
+      <video id="localVideo" autoplay muted playsinline class="video"></video>
+      <video id="remoteVideo" autoplay playsinline class="video hidden"></video>
     </div>
-    <div id="chatContainer"></div>
-    <div id="inputContainer">
-      <input type="text" id="chatInput" placeholder="Введите сообщение...">
-      <button id="sendMsgBtn">Отправить</button>
+    <div id="chatContainer" class="chat-container"></div>
+    <div id="inputContainer" class="input-container">
+      <input type="text" id="chatInput" placeholder="Введите сообщение..." class="chat-input">
+      <button id="sendMsgBtn" class="send-btn">Отправить</button>
     </div>
   </section>
 
