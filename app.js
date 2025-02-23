@@ -22,6 +22,23 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 let reconnectAttempts = 0;
 let pingInterval; // Интервал для отправки пингов
 
+async function getXirsysIceServers() {
+  try {
+      const response = await fetch("https://german4ik:df7323d2-f237-11ef-94bd-0242ac130003@global.xirsys.net/_turn/MyFirstApp", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ format: "urls" })
+      });
+      const data = await response.json();
+      console.log("🧊 Полученные ICE-серверы:", data.v);
+      return data.v.iceServers;
+  } catch (error) {
+      console.error("🚨 Ошибка получения ICE-серверов:", error);
+      return [];
+  }
+}
+
+
 const ICE_CONFIG = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
