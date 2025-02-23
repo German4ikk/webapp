@@ -20,6 +20,7 @@ let socket;
 let reconnectTimer;
 const MAX_RECONNECT_ATTEMPTS = 5;
 let reconnectAttempts = 0;
+let pingInterval; // Интервал для отправки пингов
 
 const ICE_CONFIG = {
   iceServers: [
@@ -59,12 +60,26 @@ function checkWebSocket() {
   }
 }
 
+// Отправка пинга для поддержания активности
+function sendPing() {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'ping' }));
+    console.log("📡 Отправлен ping для поддержания активности WebSocket");
+  } else {
+    console.warn("WebSocket не открыт для отправки пинга");
+  }
+}
+
 // WebSocket с переподключением
 const initWebSocket = () => {
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
     console.error("Превышено максимальное число попыток переподключения");
     showError("Не удалось подключиться к серверу. Попробуйте позже.");
     return;
+  }
+
+  if (socket) {
+    socket.close();
   }
 
   socket = new WebSocket(WEBSOCKET_URL);
@@ -76,6 +91,8 @@ const initWebSocket = () => {
     if (mode) registerUser();
     // Начать проверку состояния каждые 5 секунд
     setInterval(checkWebSocket, 5000);
+    // Начать отправку пингов каждые 20 секунд
+    pingInterval = setInterval(sendPing, 20000);
   };
 
   socket.onmessage = handleMessage;
@@ -87,6 +104,7 @@ const initWebSocket = () => {
 
   socket.onclose = (event) => {
     console.log("🔌 WebSocket connection closed, code:", event.code, "reason:", event.reason);
+    clearInterval(pingInterval); // Остановить пинги при закрытии
     reconnectAttempts++;
     reconnectTimer = setTimeout(() => {
       initWebSocket();
@@ -113,6 +131,11 @@ const handleMessage = async (event) => {
   try {
     const data = JSON.parse(event.data);
     console.log("📥 Received:", data.type);
+
+    if (data.type === 'pong') {
+      console.log("🏓 Получен pong от сервера");
+      return; // Игнорируем pong, он только для поддержания активности
+    }
 
     switch (data.type) {
       case 'connected':
