@@ -1,195 +1,126 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
-console.log("Telegram initData:", tg.initData);
 
-const urlParams = new URLSearchParams(window.location.search);
-let mode = urlParams.get('mode');
-const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 'test_user';
+// 1. Безопасность: экранирование HTML
+const escapeHTML = str => str.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// Устанавливаем WebSocket-соединение с сервером на Railway
+// 2. Инициализация WebSocket с переподключением
 const WEBSOCKET_URL = "wss://websocket-production-3524.up.railway.app";
-const socket = new WebSocket(WEBSOCKET_URL);
+let socket;
+let reconnectAttempts = 0;
 
-// WebRTC переменные
-let peerConnection;
-let remoteStream = new MediaStream();
-const configuration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+const initWebSocket = () => {
+  socket = new WebSocket(WEBSOCKET_URL);
 
-socket.onopen = () => {
-  console.log("✅ WebSocket connected");
+  socket.onopen = () => {
+    console.log("✅ Соединение установлено");
+    reconnectAttempts = 0;
+    registerUser();
+  };
+
+  socket.onmessage = handleMessage;
+  
+  socket.onclose = () => {
+    console.log("🔌 Соединение закрыто");
+    reconnect();
+  };
+
+  socket.onerror = (err) => {
+    console.error("⚠️ Ошибка WebSocket:", err);
+    socket.close();
+  };
+};
+
+// 3. Регистрация пользователя
+const registerUser = () => {
+  const userId = tg.initDataUnsafe.user?.id || 'guest_' + Math.random().toString(36).substr(2, 9);
+  const mode = new URLSearchParams(window.location.search).get('mode') || 'viewer';
+  
   socket.send(JSON.stringify({
     type: "register",
-    user_id: userId,
-    mode: mode || "viewer"
+    user_id: escapeHTML(userId),
+    mode: escapeHTML(mode)
   }));
 };
 
-socket.onmessage = async (event) => {
-  const data = JSON.parse(event.data);
-  console.log("📩 Received message from server:", data);
-
-  if (data.type === "stream_notification") {
-    updateStreamList(data.user_id, data.mode);
-  } else if (data.type === "stream_list") {
-    renderStreamList(data.streams);
-  } else if (data.type === "offer") {
-    await handleOffer(data);
-  } else if (data.type === "answer") {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-  } else if (data.type === "candidate") {
-    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-  } else if (data.type === "chat_message") {
-    appendMessage(data.user_id, data.message);
-  }
-};
-
-socket.onerror = (error) => {
-  console.error("❌ WebSocket error:", error);
-};
-
-socket.onclose = () => {
-  console.log("❌ WebSocket closed");
-};
-
-const modeSelectionDiv = document.getElementById('modeSelection');
-const startModeBtn = document.getElementById('startModeBtn');
-const viewerContainer = document.getElementById('viewerContainer');
-const streamList = document.getElementById('streamList');
-const loading = document.getElementById('loading');
-const appContainerDiv = document.getElementById('appContainer');
-const modeTitle = document.getElementById('modeTitle');
-const localVideo = document.getElementById('localVideo');
-const remoteVideo = document.getElementById('remoteVideo');
-const chatContainer = document.getElementById('chatContainer');
-const chatInput = document.getElementById('chatInput');
-const sendMsgBtn = document.getElementById('sendMsgBtn');
-const giftBtn = document.getElementById('giftBtn');
-
-let localStream;
-
-if (!mode) {
-  modeSelectionDiv.classList.remove('hidden');
-} else {
-  startApp(mode).catch(error => console.error("❌ Error in startApp:", error));
-}
-
-startModeBtn.addEventListener('click', () => {
-  const selectedRadio = document.querySelector('input[name="mode"]:checked');
-  if (!selectedRadio) {
-    alert("Пожалуйста, выберите режим.");
-    return;
-  }
-  startApp(selectedRadio.value).catch(error => console.error("❌ Error in startApp:", error));
-});
-
-async function startApp(selectedMode) {
-  mode = selectedMode;
-  modeSelectionDiv.classList.add('hidden');
-
-  if (mode === 'viewer') {
-    viewerContainer.classList.remove('hidden');
-    loading.classList.remove('hidden');
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "get_streams", user_id: userId }));
-    }
-    loading.classList.add('hidden');
-  } else {
-    viewerContainer.classList.add('hidden');
-    appContainerDiv.classList.remove('hidden');
-    modeTitle.innerText = getModeTitle(mode);
-
-    const videoStarted = await startVideo();
-    if (!videoStarted) return;
-
-    if (mode === 'stream') {
-      chatContainer.innerHTML = `<div class="chat-message"><i>📡 Ваш эфир запущен!</i></div>`;
-      giftBtn.classList.add('hidden');
-      setTimeout(() => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({
-            type: "start_stream",
-            user_id: userId,
-            mode: mode
-          }));
-        }
-      }, 1000);
-    }
-  }
-}
-
-async function startVideo() {
+// 4. Обработчик сообщений
+const handleMessage = async (event) => {
   try {
-    const constraints = { video: true, audio: true };
-    localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    localVideo.srcObject = localStream;
-    await localVideo.play();
-    console.log("📷 Video stream started successfully");
-    return true;
-  } catch (error) {
-    console.error("🚨 Ошибка доступа к камере/микрофону:", error);
-    alert("🚨 Не удалось получить доступ к камере/микрофону.");
-    return false;
-  }
-}
+    const data = JSON.parse(event.data);
+    console.log("📥 Получено:", data.type);
 
-async function handleOffer(data) {
-  peerConnection = new RTCPeerConnection(configuration);
-  peerConnection.ontrack = (event) => {
-    remoteStream.addTrack(event.track);
-    remoteVideo.srcObject = remoteStream;
-  };
-
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-
-  socket.send(JSON.stringify({ type: "answer", answer, to: data.from }));
-}
-
-function renderStreamList(streams) {
-  if (streams.length === 0) {
-    streamList.innerHTML = '<div class="stream-item"><h3>Нет активных эфиров</h3></div>';
-  } else {
-    streamList.innerHTML = streams.map(sid =>
-      `<div class="stream-item" onclick="joinStream('${sid}')"><h3>Эфир от ${sid}</h3><p>Нажмите, чтобы присоединиться</p></div>`
-    ).join('');
-  }
-}
-
-function joinStream(streamerId) {
-  peerConnection = new RTCPeerConnection(configuration);
-  remoteStream = new MediaStream();
-  remoteVideo.srcObject = remoteStream;
-
-  peerConnection.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.send(JSON.stringify({ type: "candidate", candidate: event.candidate, to: streamerId }));
+    switch(data.type) {
+      case 'stream_list':
+        renderStreams(data.streams);
+        break;
+      case 'offer':
+        await handleWebRTCOffer(data);
+        break;
+      case 'chat_message':
+        showChatMessage(data.sender, data.message);
+        break;
+      default:
+        console.warn("Неизвестный тип сообщения:", data.type);
     }
-  };
+  } catch (err) {
+    console.error("Ошибка обработки сообщения:", err);
+  }
+};
 
-  peerConnection.ontrack = (event) => {
-    remoteStream.addTrack(event.track);
-    remoteVideo.srcObject = remoteStream;
-  };
+// 5. WebRTC логика
+let peerConnection;
 
-  peerConnection.createOffer().then((offer) => {
-    peerConnection.setLocalDescription(offer);
-    socket.send(JSON.stringify({ type: "offer", offer, to: streamerId }));
+const initPeerConnection = () => {
+  if (peerConnection) peerConnection.close();
+  
+  peerConnection = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      // Добавьте TURN-серверы при необходимости
+    ]
   });
 
-  appContainerDiv.classList.remove('hidden');
-  viewerContainer.classList.add('hidden');
-  modeTitle.innerText = "Просмотр эфира";
-  chatContainer.innerHTML = `<div class="chat-message"><i>Вы присоединились к эфиру от ${streamerId}</i></div>`;
-}
+  peerConnection.onicecandidate = ({ candidate }) => {
+    if (candidate) {
+      socket.send(JSON.stringify({
+        type: "ice_candidate",
+        candidate: candidate.toJSON()
+      }));
+    }
+  };
+};
 
-function getModeTitle(m) {
-  return m === 'stream' ? "📡 Эфир" : "👀 Зритель";
-}
+// 6. Запуск приложения
+document.addEventListener('DOMContentLoaded', () => {
+  initWebSocket();
+  setupUIEventListeners();
+});
 
-sendMsgBtn.addEventListener('click', () => {
-  const msg = chatInput.value.trim();
-  if (!msg) return;
-  appendMessage("Вы", msg);
-  chatInput.value = "";
-  if (socket.readyState === W
+// 7. Вспомогательные функции
+const reconnect = () => {
+  if (reconnectAttempts < 5) {
+    const delay = Math.min(3000 * (2 ** reconnectAttempts), 30000);
+    console.log(`♻️ Переподключение через ${delay}ms...`);
+    setTimeout(initWebSocket, delay);
+    reconnectAttempts++;
+  }
+};
+
+const showChatMessage = (sender, message) => {
+  const chat = document.getElementById('chatContainer');
+  const div = document.createElement('div');
+  div.className = 'message';
+  div.innerHTML = `
+    <b>${escapeHTML(sender)}</b>: 
+    <span>${escapeHTML(message)}</span>
+  `;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+};
+
+// 8. Очистка при закрытии
+window.addEventListener('beforeunload', () => {
+  socket?.close();
+  peerConnection?.close();
+  localStream?.getTracks().forEach(track => track.stop());
+});
