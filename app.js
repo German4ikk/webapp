@@ -328,7 +328,7 @@ function joinStream(streamerId) {
               type: "join_stream",
               user_id: userId,
               streamer_id: streamerId,
-              offer: offer // Добавляем реальный offer для WebRTC
+              offer: offer // Отправляем реальный offer
             }));
           });
       })
@@ -353,7 +353,7 @@ function handleRoulette() {
             socket.send(JSON.stringify({
               type: "join_roulette",
               user_id: userId,
-              offer: offer // Добавляем реальный offer для WebRTC
+              offer: offer // Отправляем реальный offer
             }));
           });
       })
