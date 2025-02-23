@@ -1,10 +1,18 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
+console.log("Telegram initData:", tg.initData);
 
-// 1. Исправление синтаксических ошибок в строках (исправлен escapeHTML)
-const escapeHTML = (str) => str.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Получаем userId из initData (если доступен) или генерируем случайный
+const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : Math.random().toString(36).substr(2, 9);
+let mode = 'viewer'; // Значение по умолчанию — зритель, можно изменить через интерфейс
 
-// 2. Конфигурация WebRTC (добавлены дополнительные STUN-серверы для надёжности)
+// WebSocket URL для подключения к серверу
+const WEBSOCKET_URL = "wss://websocket-production-3524.up.railway.app";
+let socket;
+let reconnectTimer;
+const MAX_RECONNECT_ATTEMPTS = 5;
+let reconnectAttempts = 0;
+
 const ICE_CONFIG = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
@@ -15,20 +23,24 @@ const ICE_CONFIG = {
 
 let peerConnection;
 let localStream;
-let userId = Math.random().toString(36).substr(2, 9); // Генерируем уникальный userId
-let socket;
-let reconnectTimer;
 
-// DOM-элементы (предполагается, что они существуют в HTML)
+// DOM-элементы
+const modeSelectionDiv = document.getElementById('modeSelection');
+const startModeBtn = document.getElementById('startModeBtn');
+const viewerContainer = document.getElementById('viewerContainer');
+const streamList = document.getElementById('streamList');
+const loading = document.getElementById('loading');
+const appContainerDiv = document.getElementById('appContainer');
+const modeTitle = document.getElementById('modeTitle');
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
-const streamList = document.getElementById('streamList');
+const chatContainer = document.getElementById('chatContainer');
+const chatInput = document.getElementById('chatInput');
+const sendMsgBtn = document.getElementById('sendMsgBtn');
+const giftBtn = document.getElementById('giftBtn');
+const errorMessage = document.getElementById('errorMessage');
 
-// 3. Улучшенное WebSocket соединение с переподключением и обработкой ошибок
-const WEBSOCKET_URL = "wss://websocket-production-3524.up.railway.app";
-const MAX_RECONNECT_ATTEMPTS = 5;
-let reconnectAttempts = 0;
-
+// WebSocket с переподключением
 const initWebSocket = () => {
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
     console.error("Превышено максимальное число попыток переподключения");
@@ -48,7 +60,7 @@ const initWebSocket = () => {
   socket.onmessage = handleMessage;
 
   socket.onerror = (error) => {
-    console.error("WebSocket error:", error);
+    console.error("❌ WebSocket error:", error);
   };
 
   socket.onclose = () => {
@@ -58,7 +70,68 @@ const initWebSocket = () => {
   };
 };
 
-// 4. Полный цикл WebRTC с улучшенной обработкой
+function registerUser() {
+  socket.send(JSON.stringify({
+    type: "register",
+    user_id: userId,
+    mode: mode || "viewer"
+  }));
+}
+
+const handleMessage = async (event) => {
+  try {
+    const data = JSON.parse(event.data);
+    console.log("📥 Received:", data.type);
+
+    switch (data.type) {
+      case 'connected':
+        console.log("Успешно подключено к серверу");
+        if (mode === 'viewer') {
+          socket.send(JSON.stringify({ type: "get_streams", user_id: userId }));
+        } else if (mode === 'stream') {
+          startStream();
+        } else if (mode === 'roulette') {
+          handleRoulette();
+        }
+        break;
+      case 'stream_list':
+        renderStreamList(data.streams || []);
+        break;
+      case 'stream_started':
+      case 'stream_notification':
+        updateStreamList(data.user_id, data.mode);
+        break;
+      case 'partner':
+        await handlePartner(data.partner_id);
+        break;
+      case 'offer':
+        await handleOffer(data);
+        break;
+      case 'answer':
+        await handleAnswer(data);
+        break;
+      case 'ice_candidate':
+        await handleIceCandidate(data);
+        break;
+      case 'chat_message':
+        appendMessage(data.user_id, data.message);
+        break;
+      case 'gift':
+        appendMessage("Бот", `🎁 Вы получили подарок на ${data.amount}`);
+        break;
+      case 'error':
+        showError(data.message || "Произошла ошибка на сервере");
+        break;
+      case 'viewer_joined':
+        console.log(`Зритель ${data.viewer_id} подключился к вашему эфиру`);
+        break;
+    }
+  } catch (error) {
+    console.error("Ошибка обработки сообщения:", error);
+    showError("Ошибка при обработке серверного сообщения");
+  }
+};
+
 const createPeerConnection = async () => {
   if (peerConnection) {
     peerConnection.close();
@@ -98,85 +171,6 @@ const createPeerConnection = async () => {
   }
 };
 
-// 5. Исправленная и безопасная функция отображения эфиров
-function renderStreamList(streams) {
-  if (!streamList) return;
-  streamList.innerHTML = streams.map(sid => `
-    <div class="stream-item" onclick="joinStream('${escapeHTML(sid)}')">
-      <h3>🎥 Эфир от ${escapeHTML(sid)}</h3>
-      <p>Нажмите для подключения</p>
-    </div>
-  `).join('');
-}
-
-// 6. Обработка рулетки с таймаутом
-async function handleRoulette() {
-  try {
-    await createPeerConnection();
-    
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    socket.send(JSON.stringify({
-      type: "join_roulette",
-      user_id: userId
-    }));
-
-    // Таймаут на случай, если партнёр не найдён
-    const timeout = setTimeout(() => {
-      if (!peerConnection.remoteDescription) {
-        showError("Не удалось найти собеседника. Попробуйте снова.");
-        peerConnection.close();
-      }
-    }, 15000); // 15 секунд ожидания
-
-    socket.send(JSON.stringify({
-      type: "roulette_offer",
-      offer: offer,
-      user_id: userId
-    }));
-  } catch (error) {
-    console.error("Ошибка в рулетке:", error);
-    showError("Ошибка при подключении к рулетке");
-  }
-}
-
-// 7. Модифицированный обработчик сообщений с улучшенной обработкой ошибок
-const handleMessage = async (event) => {
-  try {
-    const data = JSON.parse(event.data);
-    console.log("📥 Received:", data.type);
-
-    switch (data.type) {
-      case 'stream_list':
-        renderStreamList(data.streams || []);
-        break;
-      case 'partner':
-        await handlePartner(data.partner_id);
-        break;
-      case 'offer':
-        await handleOffer(data);
-        break;
-      case 'answer':
-        await handleAnswer(data);
-        break;
-      case 'ice_candidate':
-        await handleIceCandidate(data);
-        break;
-      case 'error':
-        showError(data.message || "Произошла ошибка на сервере");
-        break;
-      case 'connected':
-        console.log("Успешно подключено к серверу");
-        break;
-    }
-  } catch (error) {
-    console.error("Ошибка обработки сообщения:", error);
-    showError("Ошибка при обработке серверного сообщения");
-  }
-};
-
-// 8. Обработчики WebRTC
 async function handleOffer(data) {
   try {
     await createPeerConnection();
@@ -218,6 +212,7 @@ async function handleIceCandidate(data) {
 
 async function handlePartner(partnerId) {
   try {
+    await createPeerConnection();
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
 
@@ -233,84 +228,217 @@ async function handlePartner(partnerId) {
   }
 }
 
-// 9. Инициализация при загрузке с проверками
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    initWebSocket();
-    setupEventListeners();
-    await startVideo();
-  } catch (error) {
-    console.error("Ошибка при инициализации:", error);
-    showError("Ошибка при запуске приложения");
-  }
-});
+async function startApp(selectedMode) {
+  mode = selectedMode;
+  modeSelectionDiv.classList.add('hidden');
 
-// 10. Дополнительные функции
+  if (mode === 'viewer') {
+    viewerContainer.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "get_streams", user_id: userId }));
+    }
+    loading.classList.add('hidden');
+  } else {
+    viewerContainer.classList.add('hidden');
+    appContainerDiv.classList.remove('hidden');
+    modeTitle.innerText = getModeTitle(mode);
+
+    const videoStarted = await startVideo();
+    if (!videoStarted) return;
+
+    if (mode === 'stream') {
+      chatContainer.innerHTML = '<div class="chat-message"><i>📡 Ваш эфир запущен!</i></div>';
+      giftBtn.classList.add('hidden');
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "start_stream",
+          user_id: userId,
+          mode: mode
+        }));
+      }
+    } else if (mode === 'roulette') {
+      chatContainer.innerHTML = '<div class="chat-message"><i>🔄 Поиск собеседника...</i></div>';
+      giftBtn.classList.remove('hidden');
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "join_roulette",
+          user_id: userId
+        }));
+      }
+    }
+  }
+}
+
 async function startVideo() {
   try {
     const constraints = { 
-      video: { width: 1280, height: 720, facingMode: "user" },
-      audio: true
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+      audio: true 
     };
-    
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
     if (localVideo) {
       localVideo.srcObject = localStream;
       await localVideo.play();
     }
-    
+    console.log("📷 Video stream started successfully");
     return true;
   } catch (error) {
-    console.error("Camera error:", error);
+    console.error("🚨 Ошибка доступа к камере/микрофону:", error);
+    chatContainer.innerHTML += `<div class="chat-message"><b>Ошибка:</b> ${error.message}</div>`;
     showError("Не удалось получить доступ к камере или микрофону");
     return false;
   }
 }
 
-async function joinStream(streamerId) {
-  try {
-    await createPeerConnection();
-    
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    socket.send(JSON.stringify({
-      type: "join_stream",
-      user_id: userId,
-      streamer_id: streamerId
-    }));
-  } catch (error) {
-    console.error("Ошибка при подключении к эфиру:", error);
-    showError("Ошибка при подключении к эфиру");
+function renderStreamList(streams) {
+  if (!streamList) return;
+  if (streams.length === 0) {
+    streamList.innerHTML = '<div class="stream-item"><h3>Нет активных эфиров</h3></div>';
+  } else {
+    streamList.innerHTML = streams.map(sid => `
+      <div class="stream-item" onclick="joinStream('${sid}')">
+        <h3>🎥 Эфир от ${sid}</h3>
+        <p>Нажмите, чтобы присоединиться</p>
+      </div>
+    `).join('');
   }
 }
 
-function registerUser() {
-  socket.send(JSON.stringify({
-    type: "register",
-    user_id: userId,
-    mode: "viewer" // или "streamer" в зависимости от режима
-  }));
+function joinStream(streamerId) {
+  if (socket.readyState !== WebSocket.OPEN) {
+    showError("Нет активного соединения с сервером");
+    return;
+  }
+  createPeerConnection().then(() => {
+    peerConnection.createOffer().then(offer => {
+      peerConnection.setLocalDescription(offer).then(() => {
+        socket.send(JSON.stringify({
+          type: "join_stream",
+          user_id: userId,
+          streamer_id: streamerId
+        }));
+      });
+    });
+  });
+  appContainerDiv.classList.remove('hidden');
+  viewerContainer.classList.add('hidden');
+  modeTitle.innerText = "Просмотр эфира";
+  chatContainer.innerHTML = `<div class="chat-message"><i>Вы присоединились к эфиру от ${streamerId}</i></div>`;
 }
 
-function setupEventListeners() {
-  // Здесь добавь обработчики событий для интерфейса (например, кнопок)
-  document.getElementById('startRouletteBtn')?.addEventListener('click', handleRoulette);
-  document.getElementById('startStreamBtn')?.addEventListener('click', () => {
-    socket.send(JSON.stringify({
-      type: "start_stream",
-      user_id: userId,
-      mode: "stream"
-    }));
+function handleRoulette() {
+  if (socket.readyState !== WebSocket.OPEN) {
+    showError("Нет активного соединения с сервером");
+    return;
+  }
+  createPeerConnection().then(() => {
+    peerConnection.createOffer().then(offer => {
+      peerConnection.setLocalDescription(offer).then(() => {
+        socket.send(JSON.stringify({
+          type: "join_roulette",
+          user_id: userId
+        }));
+      });
+    });
   });
+  chatContainer.innerHTML = '<div class="chat-message"><i>🔄 Поиск собеседника...</i></div>';
+  giftBtn.classList.remove('hidden');
+}
+
+function startStream() {
+  if (socket.readyState !== WebSocket.OPEN) {
+    showError("Нет активного соединения с сервером");
+    return;
+  }
+  socket.send(JSON.stringify({
+    type: "start_stream",
+    user_id: userId,
+    mode: "stream"
+  }));
+  chatContainer.innerHTML = '<div class="chat-message"><i>📡 Ваш эфир запущен!</i></div>';
+  giftBtn.classList.add('hidden');
+}
+
+function getModeTitle(m) {
+  switch (m) {
+    case 'stream': return "📡 Эфир";
+    case 'roulette': return "🎥 Видео-рулетка";
+    case 'viewer': return "👀 Зритель";
+    default: return "🔄 Неизвестный режим";
+  }
+}
+
+sendMsgBtn.addEventListener('click', () => {
+  const msg = chatInput.value.trim();
+  if (!msg) return;
+  appendMessage("Вы", msg);
+  chatInput.value = "";
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "chat_message",
+      user_id: userId,
+      message: msg
+    }));
+  }
+});
+
+giftBtn.addEventListener('click', () => {
+  const giftAmount = 1.0;
+  appendMessage("Вы", `🎁 Отправили подарок на ${giftAmount}`);
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "gift",
+      user_id: userId,
+      to: userId, // Здесь можно указать другого пользователя (например, стримера)
+      amount: giftAmount
+    }));
+  }
+});
+
+function appendMessage(sender, message) {
+  chatContainer.innerHTML += `<div class="chat-message"><b>${sender}:</b> ${message}</div>`;
+  chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
 function showError(message) {
-  const errorDiv = document.getElementById('errorMessage');
-  if (errorDiv) {
-    errorDiv.textContent = message;
-    errorDiv.style.display = 'block';
-    setTimeout(() => errorDiv.style.display = 'none', 5000);
+  if (errorMessage) {
+    errorMessage.textContent = message;
+    errorMessage.style.display = 'block';
+    setTimeout(() => errorMessage.style.display = 'none', 5000);
   }
   console.error("Error:", message);
+}
+
+function updateStreamList(userId, mode) {
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "get_streams", user_id: userId }));
+  }
+}
+
+// Инициализация при загрузке
+document.addEventListener('DOMContentLoaded', () => {
+  initWebSocket();
+  setupEventListeners();
+
+  if (!mode || !['viewer', 'stream', 'roulette'].includes(mode)) {
+    modeSelectionDiv.classList.remove('hidden');
+  } else {
+    startApp(mode).catch(error => console.error("❌ Error in startApp:", error));
+  }
+});
+
+function setupEventListeners() {
+  startModeBtn?.addEventListener('click', () => {
+    const selectedRadio = document.querySelector('input[name="mode"]:checked');
+    if (!selectedRadio) {
+      showError("Пожалуйста, выберите режим.");
+      return;
+    }
+    const selectedMode = selectedRadio.value;
+    startApp(selectedMode).catch(error => console.error("❌ Error in startApp:", error));
+  });
+
+  document.getElementById('startRouletteBtn')?.addEventListener('click', handleRoulette);
+  document.getElementById('startStreamBtn')?.addEventListener('click', startStream);
 }
