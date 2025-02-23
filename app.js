@@ -4,7 +4,7 @@ console.log("Telegram initData:", tg.initData);
 
 // Получаем userId из initData (если доступен) или генерируем случайный
 const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : Math.random().toString(36).substr(2, 9);
-let mode = 'viewer'; // Значение по умолчанию — зритель, можно изменить через интерфейс
+let mode = null; // Сбрасываем mode, чтобы всегда показывать выбор режима
 
 // WebSocket URL для подключения к серверу
 const WEBSOCKET_URL = "wss://websocket-production-3524.up.railway.app";
@@ -54,7 +54,7 @@ const initWebSocket = () => {
     console.log("✅ WebSocket connected");
     clearTimeout(reconnectTimer);
     reconnectAttempts = 0;
-    registerUser();
+    if (mode) registerUser();
   };
 
   socket.onmessage = handleMessage;
@@ -421,6 +421,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initWebSocket();
   setupEventListeners();
 
+  // Показываем меню выбора режима, если mode не указан
+  const urlParams = new URLSearchParams(window.location.search);
+  mode = urlParams.get('mode');
   if (!mode || !['viewer', 'stream', 'roulette'].includes(mode)) {
     modeSelectionDiv.classList.remove('hidden');
   } else {
