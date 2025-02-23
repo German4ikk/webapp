@@ -58,7 +58,7 @@ const initWebSocket = () => {
   socket = new WebSocket(WEBSOCKET_URL);
 
   socket.onopen = () => {
-    console.log("✅ WebSocket connected");
+    console.log("✅ WebSocket connected successfully");
     clearTimeout(reconnectTimer);
     reconnectAttempts = 0;
     if (mode) registerUser();
@@ -68,6 +68,7 @@ const initWebSocket = () => {
 
   socket.onerror = (error) => {
     console.error("❌ WebSocket error:", error);
+    showError("Ошибка WebSocket-соединения");
   };
 
   socket.onclose = () => {
@@ -78,11 +79,16 @@ const initWebSocket = () => {
 };
 
 function registerUser() {
-  socket.send(JSON.stringify({
-    type: "register",
-    user_id: userId,
-    mode: mode || "viewer"
-  }));
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "register",
+      user_id: userId,
+      mode: mode || "viewer"
+    }));
+  } else {
+    console.error("WebSocket не открыт для регистрации");
+    showError("Не удалось зарегистрироваться — WebSocket закрыт");
+  }
 }
 
 const handleMessage = async (event) => {
@@ -150,13 +156,15 @@ const createPeerConnection = async () => {
   peerConnection = new RTCPeerConnection(ICE_CONFIG);
 
   peerConnection.onicecandidate = ({ candidate }) => {
-    if (candidate) {
+    if (candidate && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({
         type: "candidate",
         candidate: candidate.toJSON(),
         user_id: userId,
         to: peerConnection.remoteUserId || partnerId || null // Для маршрутизации на сервере
       }));
+    } else {
+      console.error("WebSocket закрыт или нет кандидата ICE");
     }
   };
 
@@ -192,12 +200,17 @@ async function handleOffer(data) {
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
 
-    socket.send(JSON.stringify({
-      type: "answer",
-      answer: answer,
-      to: data.from,
-      user_id: userId
-    }));
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: "answer",
+        answer: answer,
+        to: data.from,
+        user_id: userId
+      }));
+    } else {
+      console.error("WebSocket закрыт при отправке answer");
+      showError("Не удалось отправить ответ WebRTC — WebSocket закрыт");
+    }
   } catch (error) {
     console.error("Ошибка обработки offer:", error);
     showError("Ошибка при обработке предложения WebRTC");
@@ -231,12 +244,17 @@ async function handlePartner(partnerId) {
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
 
-    socket.send(JSON.stringify({
-      type: "offer",
-      offer: offer,
-      to: partnerId,
-      user_id: userId
-    }));
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: "offer",
+        offer: offer,
+        to: partnerId,
+        user_id: userId
+      }));
+    } else {
+      console.error("WebSocket закрыт при отправке offer для партнёра");
+      showError("Не удалось отправить предложение WebRTC — WebSocket закрыт");
+    }
   } catch (error) {
     console.error("Ошибка при подключении к партнёру:", error);
     showError("Ошибка при подключении к собеседнику");
@@ -330,12 +348,17 @@ function joinStream(streamerId) {
       .then(offer => {
         peerConnection.setLocalDescription(offer)
           .then(() => {
-            socket.send(JSON.stringify({
-              type: "join_stream",
-              user_id: userId,
-              streamer_id: streamerId,
-              offer: offer // Отправляем реальный offer
-            }));
+            if (socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({
+                type: "join_stream",
+                user_id: userId,
+                streamer_id: streamerId,
+                offer: offer // Отправляем реальный offer
+              }));
+            } else {
+              console.error("WebSocket закрыт при подключении к эфиру");
+              showError("Не удалось подключиться к эфиру — WebSocket закрыт");
+            }
           });
       })
       .catch(error => console.error("Ошибка создания offer:", error));
@@ -356,11 +379,16 @@ function handleRoulette() {
       .then(offer => {
         peerConnection.setLocalDescription(offer)
           .then(() => {
-            socket.send(JSON.stringify({
-              type: "join_roulette",
-              user_id: userId,
-              offer: offer // Отправляем реальный offer
-            }));
+            if (socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({
+                type: "join_roulette",
+                user_id: userId,
+                offer: offer // Отправляем реальный offer
+              }));
+            } else {
+              console.error("WebSocket закрыт при подключении к рулетке");
+              showError("Не удалось подключиться к рулетке — WebSocket закрыт");
+            }
           });
       })
       .catch(error => console.error("Ошибка создания offer для рулетки:", error));
@@ -370,17 +398,18 @@ function handleRoulette() {
 }
 
 function startStream() {
-  if (socket.readyState !== WebSocket.OPEN) {
-    showError("Нет активного соединения с сервером");
-    return;
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "start_stream",
+      user_id: userId,
+      mode: "stream"
+    }));
+    chatContainer.innerHTML = '<div class="chat-message"><i>📡 Ваш эфир запущен!</i></div>';
+    giftBtn.classList.add('hidden');
+  } else {
+    console.error("WebSocket закрыт при запуске эфира");
+    showError("Не удалось запустить эфир — WebSocket закрыт");
   }
-  socket.send(JSON.stringify({
-    type: "start_stream",
-    user_id: userId,
-    mode: "stream"
-  }));
-  chatContainer.innerHTML = '<div class="chat-message"><i>📡 Ваш эфир запущен!</i></div>';
-  giftBtn.classList.add('hidden');
 }
 
 function getModeTitle(m) {
@@ -405,6 +434,9 @@ sendMsgBtn.addEventListener('click', () => {
       message: msg,
       to: to
     }));
+  } else {
+    console.error("WebSocket закрыт при отправке сообщения");
+    showError("Не удалось отправить сообщение — WebSocket закрыт");
   }
 });
 
@@ -419,6 +451,9 @@ giftBtn.addEventListener('click', () => {
       to: to,
       amount: giftAmount
     }));
+  } else {
+    console.error("WebSocket закрыт при отправке подарка");
+    showError("Не удалось отправить подарок — WebSocket закрыт");
   }
 });
 
@@ -439,6 +474,9 @@ function showError(message) {
 function updateStreamList(userId, mode) {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: "get_streams", user_id: userId }));
+  } else {
+    console.error("WebSocket закрыт при обновлении списка эфиров");
+    showError("Не удалось обновить список эфиров — WebSocket закрыт");
   }
 }
 
