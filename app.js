@@ -1,13 +1,17 @@
 const tg = window.Telegram.WebApp;
 if (tg) {
-  tg.expand();
-  console.log("Telegram initData:", tg.initData);
+  try {
+    tg.expand();
+    console.log("Telegram initData:", tg.initData);
+  } catch (error) {
+    console.error("Ошибка инициализации Telegram WebApp:", error);
+  }
 } else {
   console.error("Telegram WebApp не инициализирован");
 }
 
 // Получаем userId из initData (если доступен) или генерируем случайный
-const userId = tg.initDataUnsafe?.user ? tg.initDataUnsafe.user.id : Math.random().toString(36).substr(2, 9);
+const userId = tg?.initDataUnsafe?.user ? tg.initDataUnsafe.user.id : Math.random().toString(36).substr(2, 9);
 let mode = null; // Сбрасываем mode, чтобы всегда показывать выбор режима
 
 // WebSocket URL для подключения к серверу
@@ -47,6 +51,14 @@ const sendMsgBtn = document.getElementById('sendMsgBtn');
 const giftBtn = document.getElementById('giftBtn');
 const errorMessage = document.getElementById('errorMessage');
 
+// Проверка состояния WebSocket с интервалом
+function checkWebSocket() {
+  if (socket && socket.readyState === WebSocket.CLOSED) {
+    console.warn("WebSocket закрыт, пытаемся переподключиться");
+    initWebSocket();
+  }
+}
+
 // WebSocket с переподключением
 const initWebSocket = () => {
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -62,6 +74,8 @@ const initWebSocket = () => {
     clearTimeout(reconnectTimer);
     reconnectAttempts = 0;
     if (mode) registerUser();
+    // Начать проверку состояния каждые 5 секунд
+    setInterval(checkWebSocket, 5000);
   };
 
   socket.onmessage = handleMessage;
@@ -458,6 +472,17 @@ giftBtn.addEventListener('click', () => {
   } else {
     console.error("WebSocket закрыт при отправке подарка");
     showError("Не удалось отправить подарок — WebSocket закрыт");
+    // Попробовать переподключиться перед повторной отправкой
+    setTimeout(() => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "gift",
+          user_id: userId,
+          to: to,
+          amount: giftAmount
+        }));
+      }
+    }, 1000);
   }
 });
 
