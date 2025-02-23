@@ -13,7 +13,7 @@ const ICE_CONFIG = {
 };
 
 // 3. Инициализация WebSocket с переподключением
-const WEBSOCKET_URL = "wss://your-real-server.com:5000"; // Замените на реальный URL
+const WEBSOCKET_URL = "wss://websocket-production-3524.up.railway.app";
 let socket;
 let reconnectTimeout;
 
