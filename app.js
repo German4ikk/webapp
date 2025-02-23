@@ -112,7 +112,7 @@ const handleMessage = async (event) => {
       case 'answer':
         await handleAnswer(data);
         break;
-      case 'ice_candidate':
+      case 'candidate':
         await handleIceCandidate(data);
         break;
       case 'chat_message':
@@ -158,6 +158,8 @@ const createPeerConnection = async () => {
     if (event.streams && event.streams[0]) {
       remoteVideo.srcObject = event.streams[0];
       remoteVideo.play().catch(e => console.error("Ошибка воспроизведения видео:", e));
+    } else {
+      console.warn("No streams in ontrack event:", event);
     }
   };
 
@@ -317,15 +319,18 @@ function joinStream(streamerId) {
     return;
   }
   createPeerConnection().then(() => {
-    peerConnection.createOffer().then(offer => {
-      peerConnection.setLocalDescription(offer).then(() => {
-        socket.send(JSON.stringify({
-          type: "join_stream",
-          user_id: userId,
-          streamer_id: streamerId
-        }));
-      });
-    }).catch(error => console.error("Ошибка создания offer:", error));
+    peerConnection.createOffer()
+      .then(offer => {
+        peerConnection.setLocalDescription(offer)
+          .then(() => {
+            socket.send(JSON.stringify({
+              type: "join_stream",
+              user_id: userId,
+              streamer_id: streamerId
+            }));
+          });
+      })
+      .catch(error => console.error("Ошибка создания offer:", error));
   });
   appContainerDiv.classList.remove('hidden');
   viewerContainer.classList.add('hidden');
@@ -339,14 +344,17 @@ function handleRoulette() {
     return;
   }
   createPeerConnection().then(() => {
-    peerConnection.createOffer().then(offer => {
-      peerConnection.setLocalDescription(offer).then(() => {
-        socket.send(JSON.stringify({
-          type: "join_roulette",
-          user_id: userId
-        }));
-      });
-    }).catch(error => console.error("Ошибка создания offer для рулетки:", error));
+    peerConnection.createOffer()
+      .then(offer => {
+        peerConnection.setLocalDescription(offer)
+          .then(() => {
+            socket.send(JSON.stringify({
+              type: "join_roulette",
+              user_id: userId
+            }));
+          });
+      })
+      .catch(error => console.error("Ошибка создания offer для рулетки:", error));
   });
   chatContainer.innerHTML = '<div class="chat-message"><i>🔄 Поиск собеседника...</i></div>';
   giftBtn.classList.remove('hidden');
@@ -381,7 +389,7 @@ sendMsgBtn.addEventListener('click', () => {
   appendMessage("Вы", msg);
   chatInput.value = "";
   if (socket.readyState === WebSocket.OPEN) {
-    const to = mode === 'viewer' ? (peerConnection?.remoteUserId || null) : null; // Для зрителя — стример, для стримера — всем
+    const to = mode === 'viewer' ? peerConnection?.remoteUserId || null : null; // Для зрителя — стример, для стримера — всем
     socket.send(JSON.stringify({
       type: "chat_message",
       user_id: userId,
