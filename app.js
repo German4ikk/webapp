@@ -18,7 +18,7 @@ const sendMsgBtn = document.getElementById('sendMsgBtn');
 
 let localStream;
 let peerConnection;
-const ws = new WebSocket('ws://localhost:5000'); // Замените на ваш сервер
+const ws = new WebSocket('wss://your-signaling-server.com:5000'); // Используйте WSS для HTTPS
 
 if (!mode) {
   modeSelectionDiv.classList.remove('hidden');
