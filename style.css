@@ -27,7 +27,7 @@ header {
   display: none;
 }
 
-#modeSelection, #appContainer {
+#modeSelection, #appContainer, #viewerContainer {
   width: 100%;
   max-width: 500px;
   background: rgba(255, 255, 255, 0.05); /* Полупрозрачный фон */
@@ -38,7 +38,7 @@ header {
   transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
-#modeSelection:hover, #appContainer:hover {
+#modeSelection:hover, #appContainer:hover, #viewerContainer:hover {
   transform: translateY(-5px);
   opacity: 0.95;
 }
@@ -76,17 +76,15 @@ header {
   display: none;
 }
 
-.mode-option span {
-  margin-left: 10px;
-}
-
 .mode-label {
+  margin-left: 10px;
   font-weight: bold;
 }
 
 .start-btn, .send-btn {
   display: block;
   width: 100%;
+  max-width: 250px;
   padding: 15px;
   background: linear-gradient(45deg, #ff6b6b, #ff8e53); /* Яркий градиент */
   color: #fff;
@@ -189,4 +187,48 @@ header {
 
 .send-btn:hover {
   background: linear-gradient(45deg, #27ae60, #2ecc71);
+}
+
+.stream-list {
+  margin-top: 20px;
+}
+
+.stream-item {
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  margin-bottom: 15px;
+  cursor: pointer;
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.stream-item:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.02);
+}
+
+.stream-item h3 {
+  color: #ff6b6b;
+  margin: 0 0 10px 0;
+  font-size: 18px;
+}
+
+.stream-item p {
+  color: #fff;
+  margin: 0;
+  font-size: 14px;
+}
+
+.loading {
+  text-align: center;
+  color: #ff6b6b;
+  font-size: 16px;
+  margin-top: 20px;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
 }
