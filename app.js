@@ -3,7 +3,7 @@ tg.expand();
 console.log("Telegram initData:", tg.initData);
 
 const urlParams = new URLSearchParams(window.location.search);
-let mode = urlParams.get('mode') || 'stream'; // По умолчанию эфир
+let mode = urlParams.get('mode') || 'stream';
 const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 'test_user';
 
 const modeSelectionDiv = document.getElementById('modeSelection');
@@ -23,12 +23,12 @@ const ws = new WebSocket('wss://your-signaling-server.com:5000'); // Замен�
 if (!mode) {
   modeSelectionDiv.classList.remove('hidden');
 } else {
-  startApp(mode);
+  startApp(mode).catch(error => console.error("Error in startApp:", error));
 }
 
 startModeBtn.addEventListener('click', () => {
   const selectedMode = document.querySelector('input[name="mode"]:checked').value;
-  startApp(selectedMode);
+  startApp(selectedMode).catch(error => console.error("Error in startApp:", error));
 });
 
 ws.onopen = () => {
@@ -47,18 +47,20 @@ ws.onmessage = async (event) => {
   } else if (data.type === 'partner') {
     await startRoulette(data.partner_id);
   } else if (data.type === 'stream_started') {
-    chatContainer.innerHTML = `<i>Ваш эфир запущен!</i><br>`;
+    chatContainer.innerHTML = `<div class="chat-message"><i>Ваш эфир запущен 🔥</i></div>`;
+  } else if (data.type === 'chat_message') {
+    appendMessage(data.user_id, data.message);
   }
 };
 
 ws.onerror = (error) => {
   console.error('WebSocket error:', error);
-  chatContainer.innerHTML += `<div><b>Ошибка:</b> Проблема с подключением к серверу. Проверьте настройки.</div>`;
+  chatContainer.innerHTML += `<div class="chat-message"><b>Ошибка:</b> Проблема с подключением к серверу. Проверьте настройки.</div>`;
 };
 
 ws.onclose = () => {
   console.log('WebSocket disconnected');
-  chatContainer.innerHTML += `<div><b>Предупреждение:</b> Соединение с сервером потеряно.</div>`;
+  chatContainer.innerHTML += `<div class="chat-message"><b>Предупреждение:</b> Соединение с сервером потеряно.</div>`;
 };
 
 async function startApp(selectedMode) {
@@ -67,7 +69,8 @@ async function startApp(selectedMode) {
   appContainerDiv.classList.remove('hidden');
   modeTitle.innerText = getModeTitle(mode);
 
-  await startVideo();
+  const videoStarted = await startVideo();
+  if (!videoStarted) return;
 
   if (mode === 'stream') {
     ws.send(JSON.stringify({ type: 'start_stream', user_id: userId }));
@@ -78,15 +81,20 @@ async function startApp(selectedMode) {
 
 async function startVideo() {
   try {
-    const constraints = { video: { width: 1280, height: 720 }, audio: true };
+    const constraints = {
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, // Оптимизация для мобильных
+      audio: true
+    };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
     localVideo.srcObject = localStream;
     localVideo.play();
     console.log("Video stream started successfully");
+    return true;
   } catch (error) {
     console.error("Ошибка доступа к камере/микрофону:", error);
-    chatContainer.innerHTML += `<div><b>Ошибка:</b> ${error.message}</div>`;
+    chatContainer.innerHTML += `<div class="chat-message"><b>Ошибка:</b> ${error.message}. Проверьте разрешения в настройках браузера.</div>`;
     alert("Не удалось получить доступ к камере/микрофону. Проверьте разрешения и попробуйте снова.");
+    return false;
   }
 }
 
@@ -97,7 +105,7 @@ async function startRoulette(partnerId) {
   peerConnection.ontrack = event => {
     remoteVideo.srcObject = event.streams[0];
     remoteVideo.classList.remove('hidden');
-    chatContainer.innerHTML = "<i>Собеседник подключен!</i><br>";
+    chatContainer.innerHTML += `<div class="chat-message"><i>Собеседник подключен 🎉</i></div>`;
   };
 
   peerConnection.onicecandidate = event => {
@@ -135,7 +143,7 @@ async function handleOffer(data) {
 }
 
 function getModeTitle(m) {
-  return m === 'stream' ? "Эфир" : "Видео-рулетка";
+  return m === 'stream' ? "Эфир 🔥" : "Видео-рулетка 🎉";
 }
 
 sendMsgBtn.addEventListener('click', () => {
@@ -151,7 +159,6 @@ function appendMessage(sender, message) {
   chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-// Обработка данных от бота (если бот отправляет что-то)
 tg.onEvent('data', (data) => {
   console.log('Received data from bot:', data);
   if (data.event === 'gift') {
