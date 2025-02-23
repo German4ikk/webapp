@@ -32,6 +32,7 @@ header {
   max-width: 500px;
   background: rgba(255, 255, 255, 0.05); /* Полупрозрачный фон */
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); /* Для Safari */
   padding: 25px;
   border-radius: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
