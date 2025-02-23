@@ -17,7 +17,9 @@ const ICE_CONFIG = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" }
+    { urls: "stun:stun2.l.google.com:19302" },
+    // Добавлен TURN-сервер для сложных сетей (замени на свои данные, если нужен)
+    { urls: "turn:your-turn-server.com:3478", username: "user", credential: "pass" }
   ]
 };
 
@@ -124,6 +126,7 @@ const handleMessage = async (event) => {
         break;
       case 'viewer_joined':
         console.log(`Зритель ${data.viewer_id} подключился к вашему эфиру`);
+        appendMessage("Система", `Зритель ${data.viewer_id} подключился`);
         break;
     }
   } catch (error) {
@@ -143,9 +146,10 @@ const createPeerConnection = async () => {
   peerConnection.onicecandidate = ({ candidate }) => {
     if (candidate) {
       socket.send(JSON.stringify({
-        type: "ice_candidate",
+        type: "candidate",
         candidate: candidate.toJSON(),
-        user_id: userId
+        user_id: userId,
+        to: peerConnection.remoteUserId || null // Для маршрутизации на сервере
       }));
     }
   };
@@ -174,6 +178,7 @@ const createPeerConnection = async () => {
 async function handleOffer(data) {
   try {
     await createPeerConnection();
+    peerConnection.remoteUserId = data.from; // Сохраняем ID удалённого пользователя
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
@@ -213,6 +218,7 @@ async function handleIceCandidate(data) {
 async function handlePartner(partnerId) {
   try {
     await createPeerConnection();
+    peerConnection.remoteUserId = partnerId; // Сохраняем ID партнёра
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
 
@@ -319,7 +325,7 @@ function joinStream(streamerId) {
           streamer_id: streamerId
         }));
       });
-    });
+    }).catch(error => console.error("Ошибка создания offer:", error));
   });
   appContainerDiv.classList.remove('hidden');
   viewerContainer.classList.add('hidden');
@@ -340,7 +346,7 @@ function handleRoulette() {
           user_id: userId
         }));
       });
-    });
+    }).catch(error => console.error("Ошибка создания offer для рулетки:", error));
   });
   chatContainer.innerHTML = '<div class="chat-message"><i>🔄 Поиск собеседника...</i></div>';
   giftBtn.classList.remove('hidden');
@@ -375,10 +381,12 @@ sendMsgBtn.addEventListener('click', () => {
   appendMessage("Вы", msg);
   chatInput.value = "";
   if (socket.readyState === WebSocket.OPEN) {
+    const to = mode === 'viewer' ? (peerConnection?.remoteUserId || null) : null; // Для зрителя — стример, для стримера — всем
     socket.send(JSON.stringify({
       type: "chat_message",
       user_id: userId,
-      message: msg
+      message: msg,
+      to: to
     }));
   }
 });
@@ -387,10 +395,11 @@ giftBtn.addEventListener('click', () => {
   const giftAmount = 1.0;
   appendMessage("Вы", `🎁 Отправили подарок на ${giftAmount}`);
   if (socket.readyState === WebSocket.OPEN) {
+    const to = mode === 'roulette' ? peerConnection?.remoteUserId : (mode === 'viewer' ? peerConnection?.remoteUserId : userId);
     socket.send(JSON.stringify({
       type: "gift",
       user_id: userId,
-      to: userId, // Здесь можно указать другого пользователя (например, стримера)
+      to: to,
       amount: giftAmount
     }));
   }
