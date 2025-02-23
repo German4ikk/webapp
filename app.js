@@ -8,6 +8,9 @@ const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 'test_user';
 
 const modeSelectionDiv = document.getElementById('modeSelection');
 const startModeBtn = document.getElementById('startModeBtn');
+const viewerContainer = document.getElementById('viewerContainer');
+const streamList = document.getElementById('streamList');
+const loading = document.getElementById('loading');
 const appContainerDiv = document.getElementById('appContainer');
 const modeTitle = document.getElementById('modeTitle');
 const localVideo = document.getElementById('localVideo');
@@ -15,9 +18,11 @@ const remoteVideo = document.getElementById('remoteVideo');
 const chatContainer = document.getElementById('chatContainer');
 const chatInput = document.getElementById('chatInput');
 const sendMsgBtn = document.getElementById('sendMsgBtn');
+const giftBtn = document.getElementById('giftBtn');
 
 let localStream;
 let peerConnection;
+let streamerId = null; // Для зрителей — ID ведущего
 const ws = new WebSocket('wss://your-signaling-server.com:5000'); // Замените на реальный сервер
 
 if (!mode) {
@@ -47,9 +52,16 @@ ws.onmessage = async (event) => {
   } else if (data.type === 'partner') {
     await startRoulette(data.partner_id);
   } else if (data.type === 'stream_started') {
-    chatContainer.innerHTML = `<div class="chat-message"><i>Ваш эфир запущен 🔥</i></div>`;
+    updateStreamList(data.user_id, data.mode || 'stream');
+  } else if (data.type === 'stream_notification') {
+    updateStreamList(data.user_id, data.mode || 'stream');
+  } else if (data.type === 'viewer_joined') {
+    // Ведущий получает уведомление о новом зрителе
+    chatContainer.innerHTML += `<div class="chat-message"><i>Новый зритель подключился 👀</i></div>`;
   } else if (data.type === 'chat_message') {
     appendMessage(data.user_id, data.message);
+  } else if (data.type === 'gift') {
+    appendMessage('Бот', `Вы получили подарок на ${data.amount} 🎁`);
   }
 };
 
@@ -66,25 +78,33 @@ ws.onclose = () => {
 async function startApp(selectedMode) {
   mode = selectedMode;
   modeSelectionDiv.classList.add('hidden');
-  appContainerDiv.classList.remove('hidden');
-  modeTitle.innerText = getModeTitle(mode);
 
-  const videoStarted = await startVideo();
-  if (!videoStarted) return;
+  if (mode === 'viewer') {
+    viewerContainer.classList.remove('hidden');
+    loading.classList.remove('hidden');
+    await fetchStreams();
+    loading.classList.add('hidden');
+  } else {
+    viewerContainer.classList.add('hidden');
+    appContainerDiv.classList.remove('hidden');
+    modeTitle.innerText = getModeTitle(mode);
 
-  if (mode === 'stream') {
-    ws.send(JSON.stringify({ type: 'start_stream', user_id: userId }));
-  } else if (mode === 'roulette') {
-    ws.send(JSON.stringify({ type: 'join_roulette', user_id: userId }));
+    const videoStarted = await startVideo();
+    if (!videoStarted) return;
+
+    if (mode === 'stream') {
+      ws.send(JSON.stringify({ type: 'start_stream', user_id: userId }));
+      giftBtn.classList.add('hidden'); // Ведущий не отправляет подарки самому себе
+    } else if (mode === 'roulette') {
+      ws.send(JSON.stringify({ type: 'join_roulette', user_id: userId }));
+      giftBtn.classList.remove('hidden');
+    }
   }
 }
 
 async function startVideo() {
   try {
-    const constraints = {
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, // Оптимизация для мобильных
-      audio: true
-    };
+    const constraints = { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: true };
     localStream = await navigator.mediaDevices.getUserMedia(constraints);
     localVideo.srcObject = localStream;
     localVideo.play();
@@ -106,6 +126,7 @@ async function startRoulette(partnerId) {
     remoteVideo.srcObject = event.streams[0];
     remoteVideo.classList.remove('hidden');
     chatContainer.innerHTML += `<div class="chat-message"><i>Собеседник подключен 🎉</i></div>`;
+    giftBtn.classList.remove('hidden');
   };
 
   peerConnection.onicecandidate = event => {
@@ -121,13 +142,21 @@ async function startRoulette(partnerId) {
 
 async function handleOffer(data) {
   if (!peerConnection) {
-    peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-    peerConnection.ontrack = event => {
-      remoteVideo.srcObject = event.streams[0];
-      remoteVideo.classList.remove('hidden');
-    };
+    peerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:turn.bistri.com:80', username: 'homeo', credential: 'homeo' }] }); // Добавлен TURN для стабильности
+    if (mode === 'viewer') {
+      peerConnection.ontrack = event => {
+        remoteVideo.srcObject = event.streams[0];
+        remoteVideo.classList.remove('hidden');
+        chatContainer.innerHTML += `<div class="chat-message"><i>Вы подключены к эфиру как зритель 👀</i></div>`;
+        giftBtn.classList.remove('hidden');
+      };
+    } else {
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+      peerConnection.ontrack = event => {
+        remoteVideo.srcObject = event.streams[0];
+        remoteVideo.classList.remove('hidden');
+      };
+    }
 
     peerConnection.onicecandidate = event => {
       if (event.candidate) {
@@ -137,13 +166,42 @@ async function handleOffer(data) {
   }
 
   await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-  ws.send(JSON.stringify({ type: 'answer', answer: answer, to: data.from }));
+  if (mode !== 'viewer') {
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    ws.send(JSON.stringify({ type: 'answer', answer: answer, to: data.from }));
+  }
+}
+
+async function fetchStreams() {
+  ws.send(JSON.stringify({ type: 'get_streams', user_id: userId }));
+  streamList.innerHTML = '<div class="stream-item"><h3>Нет активных эфиров</h3></div>';
+}
+
+function updateStreamList(streamerId, mode) {
+  const streamItem = document.createElement('div');
+  streamItem.className = 'stream-item';
+  streamItem.innerHTML = `
+    <h3>Эфир ${mode === 'stream_18' ? '(18+)' : ''} от ${streamerId}</h3>
+    <p>Нажми, чтобы присоединиться 👀</p>
+  `;
+  streamItem.onclick = () => joinStream(streamerId);
+  streamList.innerHTML = '';
+  streamList.appendChild(streamItem);
+}
+
+async function joinStream(streamerId) {
+  mode = 'viewer';
+  viewerContainer.classList.add('hidden');
+  appContainerDiv.classList.remove('hidden');
+  modeTitle.innerText = "Эфир (зритель) 👀";
+  this.streamerId = streamerId;
+  ws.send(JSON.stringify({ type: 'join_stream', user_id: userId, streamer_id: streamerId }));
+  giftBtn.classList.remove('hidden');
 }
 
 function getModeTitle(m) {
-  return m === 'stream' ? "Эфир 🔥" : "Видео-рулетка 🎉";
+  return m === 'stream' ? "Эфир 🔥" : m === 'roulette' ? "Видео-рулетка 🎉" : "Эфир (зритель) 👀";
 }
 
 sendMsgBtn.addEventListener('click', () => {
@@ -151,17 +209,27 @@ sendMsgBtn.addEventListener('click', () => {
   if (!msg) return;
   appendMessage("Вы", msg);
   chatInput.value = "";
-  ws.send(JSON.stringify({ type: 'chat_message', user_id: userId, message: msg }));
+  if (mode === 'viewer') {
+    ws.send(JSON.stringify({ type: 'chat_message', user_id: userId, message: msg, to: streamerId }));
+  } else {
+    ws.send(JSON.stringify({ type: 'chat_message', user_id: userId, message: msg }));
+  }
+});
+
+giftBtn.addEventListener('click', () => {
+  const giftAmount = 1.0; // Фиксированная сумма подарка (можно сделать выбор)
+  ws.send(JSON.stringify({ type: 'gift', user_id: userId, to: streamerId, amount: giftAmount }));
+  chatContainer.innerHTML += `<div class="chat-message"><b>Вы:</b> Отправили подарок на ${giftAmount} 🎁</div>`;
 });
 
 function appendMessage(sender, message) {
-  chatContainer.innerHTML += `<div class="chat-message"><b>${sender}:</b> ${message}</div>`;
+  chatContainer.innerHTML += `<div class="chat-message"><b>${sender === userId ? 'Вы' : sender}:</b> ${message}</div>`;
   chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
 tg.onEvent('data', (data) => {
   console.log('Received data from bot:', data);
   if (data.event === 'gift') {
-    chatContainer.innerHTML += `<div class="chat-message"><b>Бот:</b> Вы получили подарок на ${data.amount}!</div>`;
+    chatContainer.innerHTML += `<div class="chat-message"><b>Бот:</b> Вы получили подарок на ${data.amount} 🎁</div>`;
   }
 });
