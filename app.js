@@ -27,10 +27,19 @@ const ICE_CONFIG = {
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
-    // Замени на реальные данные TURN-сервера (регистрируйся на Xirsys или Twilio)
-    { urls: "turn:global.xirsys.net:443?transport=udp", username: "your-username-from-xirsys", credential: "your-credential-from-xirsys" }
+    { 
+      urls: "turn:global.xirsys.net:443?transport=udp", 
+      username: "german4ik", 
+      credential: "df7323d2-f237-11ef-94bd-0242ac130003"
+    },
+    {
+      urls: "turn:global.xirsys.net:443?transport=tcp",
+      username: "german4ik",
+      credential: "df7323d2-f237-11ef-94bd-0242ac130003"
+    }
   ]
 };
+
 
 let peerConnection;
 let localStream;
