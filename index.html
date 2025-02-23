@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Мини-приложение: Стримы, Рулетка и Зрители</title>
   <link rel="stylesheet" href="style.css">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; object-src 'self';">
 </head>
 <body>
   <header>
@@ -42,8 +43,8 @@
   <section id="appContainer" class="hidden">
     <h2 id="modeTitle" class="mode-title"></h2>
     <div id="videoContainer" class="video-container">
-      <video id="localVideo" autoplay muted playsinline class="video"></video>
-      <video id="remoteVideo" autoplay playsinline class="video hidden"></video>
+      <video id="localVideo" autoplay muted class="video"></video>
+      <video id="remoteVideo" autoplay class="video hidden"></video>
     </div>
     <div id="chatContainer" class="chat-container"></div>
     <div id="inputContainer" class="input-container">
