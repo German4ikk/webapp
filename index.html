@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Мини-приложение: Стримы и Рулетка</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -12,18 +13,18 @@
 
   <!-- Блок выбора режима -->
   <section id="modeSelection">
-    <h2 class="mode-title">Выберите режим:</h2>
+    <h2 class="mode-title">Выбери свой режим:</h2>
     <div class="mode-options">
       <label class="mode-option">
         <input type="radio" name="mode" value="stream" checked>
-        <span>Эфир</span>
+        <span class="mode-label">Эфир 🔥</span>
       </label>
       <label class="mode-option">
         <input type="radio" name="mode" value="roulette">
-        <span>Видео-рулетка</span>
+        <span class="mode-label">Видео-рулетка 🎉</span>
       </label>
     </div>
-    <button id="startModeBtn" class="start-btn">Запустить</button>
+    <button id="startModeBtn" class="start-btn">Запустить!</button>
   </section>
 
   <!-- Основной интерфейс -->
@@ -35,8 +36,8 @@
     </div>
     <div id="chatContainer" class="chat-container"></div>
     <div id="inputContainer" class="input-container">
-      <input type="text" id="chatInput" placeholder="Введите сообщение..." class="chat-input">
-      <button id="sendMsgBtn" class="send-btn">Отправить</button>
+      <input type="text" id="chatInput" placeholder="Напиши что-нибудь..." class="chat-input">
+      <button id="sendMsgBtn" class="send-btn">Отправить 🚀</button>
     </div>
   </section>
 
